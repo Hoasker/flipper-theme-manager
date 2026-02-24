@@ -19,7 +19,6 @@ jobs:
         uses: flipperdevices/flipperzero-ufbt-action@v0.1
         id: build-app
         with:
-          app-dir: theme_manager
           sdk-channel: release
 
       - name: Upload build artifacts
@@ -56,7 +55,6 @@ jobs:
         uses: flipperdevices/flipperzero-ufbt-action@v0.1
         id: build-release
         with:
-          app-dir: theme_manager
           sdk-channel: release
 
       - name: Create GitHub Release
