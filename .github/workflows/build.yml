@@ -8,12 +8,18 @@ on:
     branches: [main]
 
 jobs:
-  ufbt-build:
+  build-and-lint:
     runs-on: ubuntu-latest
-    name: "Build FAP"
+    name: "Build & Lint FAP"
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Lint with ufbt
+        uses: flipperdevices/flipperzero-ufbt-action@v0.1
+        with:
+          task: lint
 
       - name: Build with ufbt
         uses: flipperdevices/flipperzero-ufbt-action@v0.1
@@ -27,38 +33,26 @@ jobs:
           name: theme-manager-${{ steps.build-app.outputs.suffix }}
           path: ${{ steps.build-app.outputs.fap-artifacts }}
 
-  ufbt-lint:
-    runs-on: ubuntu-latest
-    name: "Lint sources"
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Lint with ufbt
-        uses: flipperdevices/flipperzero-ufbt-action@v0.1
-        with:
-          app-dir: theme_manager
-          task: lint
-
   release:
-    needs: ufbt-build
+    needs: build-and-lint
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     name: "Create Release"
     permissions:
       contents: write
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Build with ufbt
-        uses: flipperdevices/flipperzero-ufbt-action@v0.1
-        id: build-release
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
         with:
-          sdk-channel: release
+          name: theme-manager-release
+          path: artifacts
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: ${{ steps.build-release.outputs.fap-artifacts }}
+          files: artifacts/**
           generate_release_notes: true
