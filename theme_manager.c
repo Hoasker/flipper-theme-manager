@@ -255,7 +255,8 @@ static bool theme_manager_get_first_anim_name(
 
     if(name_ptr) {
         name_ptr += 5; /* skip "Name:" */
-        while(*name_ptr == ' ') name_ptr++; /* skip spaces */
+        while(*name_ptr == ' ')
+            name_ptr++; /* skip spaces */
 
         size_t i = 0;
         while(name_ptr[i] != '\0' && name_ptr[i] != '\n' && name_ptr[i] != '\r' &&
@@ -312,12 +313,7 @@ static void theme_manager_load_preview(ThemeManagerApp* app, uint32_t index) {
         if(theme_manager_get_first_anim_name(
                app, furi_string_get_cstr(manifest), first_anim, sizeof(first_anim))) {
             furi_string_printf(
-                meta_path,
-                "%s/%s/%s/%s",
-                ANIMATION_PACKS_PATH,
-                name,
-                first_anim,
-                META_FILENAME);
+                meta_path, "%s/%s/%s/%s", ANIMATION_PACKS_PATH, name, first_anim, META_FILENAME);
             furi_string_printf(
                 frame_path, "%s/%s/%s/frame_0.bm", ANIMATION_PACKS_PATH, name, first_anim);
         }
@@ -362,8 +358,7 @@ static void theme_manager_load_preview(ThemeManagerApp* app, uint32_t index) {
     }
 
     File* file = storage_file_alloc(app->storage);
-    if(!storage_file_open(
-           file, furi_string_get_cstr(frame_path), FSAM_READ, FSOM_OPEN_EXISTING)) {
+    if(!storage_file_open(file, furi_string_get_cstr(frame_path), FSAM_READ, FSOM_OPEN_EXISTING)) {
         FURI_LOG_W(TAG, "Preview: can't open %s", furi_string_get_cstr(frame_path));
         storage_file_free(file);
         furi_string_free(meta_path);
@@ -740,11 +735,7 @@ static void theme_manager_info_draw(Canvas* canvas, void* _model) {
     canvas_set_color(canvas, ColorBlack);
 
     canvas_draw_frame(
-        canvas,
-        PREVIEW_DRAW_X - 1,
-        PREVIEW_DRAW_Y - 1,
-        PREVIEW_DRAW_W + 2,
-        PREVIEW_DRAW_H + 2);
+        canvas, PREVIEW_DRAW_X - 1, PREVIEW_DRAW_Y - 1, PREVIEW_DRAW_W + 2, PREVIEW_DRAW_H + 2);
 
     if(model->preview_loaded && model->frame_data) {
         uint8_t src_w = model->frame_w;
@@ -761,8 +752,8 @@ static void theme_manager_info_draw(Canvas* canvas, void* _model) {
             uint8_t sy = (src_h > PREVIEW_DRAW_H) ? (uint8_t)(py * src_h / PREVIEW_DRAW_H) : py;
 
             for(uint8_t px = 0; px < draw_w; px++) {
-                uint8_t sx =
-                    (src_w > PREVIEW_DRAW_W) ? (uint8_t)(px * src_w / PREVIEW_DRAW_W) : px;
+                uint8_t sx = (src_w > PREVIEW_DRAW_W) ? (uint8_t)(px * src_w / PREVIEW_DRAW_W) :
+                                                        px;
 
                 uint32_t byte_idx = (uint32_t)sy * src_row_bytes + sx / 8;
                 if(byte_idx < model->frame_size) {
@@ -876,7 +867,6 @@ static bool theme_manager_info_input(InputEvent* event, void* context) {
 
         view_dispatcher_switch_to_view(app->view_dispatcher, ThemeManagerViewDeleteConfirm);
         return true;
-
     }
 
     return false;
@@ -1197,8 +1187,7 @@ int32_t theme_manager_app(void* p) {
     view_set_input_callback(app->info_view, theme_manager_info_input);
     view_set_context(app->info_view, app);
     view_set_previous_callback(app->info_view, theme_manager_nav_submenu);
-    view_dispatcher_add_view(
-        app->view_dispatcher, ThemeManagerViewInfo, app->info_view);
+    view_dispatcher_add_view(app->view_dispatcher, ThemeManagerViewInfo, app->info_view);
 
     /* Initialize model */
     with_view_model(
@@ -1213,8 +1202,7 @@ int32_t theme_manager_app(void* p) {
     app->confirm_dialog = dialog_ex_alloc();
     dialog_ex_set_result_callback(app->confirm_dialog, theme_manager_confirm_callback);
     dialog_ex_set_context(app->confirm_dialog, app);
-    view_set_previous_callback(
-        dialog_ex_get_view(app->confirm_dialog), theme_manager_nav_submenu);
+    view_set_previous_callback(dialog_ex_get_view(app->confirm_dialog), theme_manager_nav_submenu);
     view_dispatcher_add_view(
         app->view_dispatcher, ThemeManagerViewConfirm, dialog_ex_get_view(app->confirm_dialog));
 
@@ -1228,8 +1216,7 @@ int32_t theme_manager_app(void* p) {
     app->delete_dialog = dialog_ex_alloc();
     dialog_ex_set_result_callback(app->delete_dialog, theme_manager_delete_callback);
     dialog_ex_set_context(app->delete_dialog, app);
-    view_set_previous_callback(
-        dialog_ex_get_view(app->delete_dialog), theme_manager_nav_submenu);
+    view_set_previous_callback(dialog_ex_get_view(app->delete_dialog), theme_manager_nav_submenu);
     view_dispatcher_add_view(
         app->view_dispatcher,
         ThemeManagerViewDeleteConfirm,
