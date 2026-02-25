@@ -11,21 +11,13 @@ Manage dolphin animation themes directly from your Flipper Zero — no PC requir
 
 ## Screenshots
 
-| App in menu | Theme list | Theme info + preview |
+| Menu | Theme Info | Apply |
 |:---:|:---:|:---:|
-| ![App in menu](screenshots/1.png) | ![Theme list](screenshots/2.png) | ![Theme info](screenshots/3.png) |
+| ![Menu](screenshots/2.png) | ![Info](screenshots/3.png) | ![Apply](screenshots/4.png) |
 
-| Apply confirm | Reboot prompt | Theme applied |
+| Confirm | Reboot | Delete |
 |:---:|:---:|:---:|
-| ![Apply confirm](screenshots/4.png) | ![Reboot prompt](screenshots/5.png) | ![Theme applied](screenshots/8.png) |
-
-| Restore previous | Backup restored | Delete confirm |
-|:---:|:---:|:---:|
-| ![Restore](screenshots/6.png) | ![Restored](screenshots/7.png) | ![Delete](screenshots/10.png) |
-
-| Deleted | Theme info (old) |
-|:---:|:---:|
-| ![Deleted](screenshots/11.png) | ![Info old](screenshots/9.png) |
+| ![Confirm](screenshots/5.png) | ![Reboot](screenshots/7.png) | ![Delete](screenshots/8.png) |
 
 ![Full workflow](screenshots/all_process.gif)
 
