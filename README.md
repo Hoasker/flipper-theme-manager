@@ -15,7 +15,7 @@ Please see the GitHub repository (https://github.com/Hoasker/flipper-theme-manag
 
 ## Features
 
-- **Scan SD card** — auto-detects animation packs in `/ext/animation_packs/`
+- Scan SD card — auto-detects animation packs in /ext/animation_packs/
 - **3 theme formats** — Pack `(P)`, Anim Pack `(A)`, Single animation `(S)`
 - **Animation preview** — thumbnail of first frame on the info screen
 - **Theme info** — view type, animation count, and size before applying
@@ -29,57 +29,49 @@ Please see the GitHub repository (https://github.com/Hoasker/flipper-theme-manag
 
 **From Releases (recommended)**
 
-1. Download `theme_manager.fap` from Releases: https://github.com/Hoasker/flipper-theme-manager/releases
-2. Copy to your Flipper's SD card: `/ext/apps/Tools/`
+1. Download theme_manager.fap from Releases: https://github.com/Hoasker/flipper-theme-manager/releases
+2. Copy to your Flipper's SD card: /ext/apps/Tools/
 
 **Build from source**
 
-```bash
 cd theme_manager
 ufbt
-```
 
-Copy `dist/theme_manager.fap` to SD card, or use `ufbt launch` to build & run.
+Copy dist/theme_manager.fap to SD card, or use ufbt launch to build & run.
 
 ## Adding Themes
 
-Place theme folders in `/ext/animation_packs/` on your SD card:
+Place theme folders in /ext/animation_packs/ on your SD card:
 
 **Format A — Pack (manifest + animation folders)**
-```
-animation_packs/MyTheme/
-├── manifest.txt
-├── Anim1/
-│   ├── meta.txt
-│   └── frame_*.bm
-└── Anim2/
-    ├── meta.txt
-    └── frame_*.bm
-```
+  animation_packs/MyTheme/
+  ├── manifest.txt
+  ├── Anim1/
+  │   ├── meta.txt
+  │   └── frame_*.bm
+  └── Anim2/
+      ├── meta.txt
+      └── frame_*.bm
 
 **Format B — Anim Pack (Anims/ subdirectory)**
-```
-animation_packs/MyTheme/
-└── Anims/
-    ├── manifest.txt
-    ├── Anim1/
-    └── Anim2/
-```
+  animation_packs/MyTheme/
+  └── Anims/
+      ├── manifest.txt
+      ├── Anim1/
+      └── Anim2/
 
 **Format C — Single Animation**
-```
-animation_packs/MySingleAnim/
-├── meta.txt
-├── frame_0.bm
-├── frame_1.bm
-└── ...
-```
+  animation_packs/MySingleAnim/
+  ├── meta.txt
+  ├── frame_0.bm
+  ├── frame_1.bm
+  └── ...
 
 ## How It Works
 
-1. Scans `/ext/animation_packs/` for supported theme formats
+1. Scans /ext/animation_packs/ for supported theme formats
 2. Select a theme → view info with animation preview
-3. Apply → backs up `/ext/dolphin/` → merges new theme
+3. Apply → backs up /ext/dolphin/ → merges new theme
 4. Reboot to see new animations, or keep browsing
 5. Use **Restore Previous** to revert anytime
 
@@ -87,10 +79,8 @@ animation_packs/MySingleAnim/
 
 Override default paths at compile time:
 
-```bash
 ufbt CFLAGS='-DCUSTOM_ANIMATION_PACKS_PATH=EXT_PATH("my_anims")'
 ufbt CFLAGS='-DCUSTOM_DOLPHIN_PATH=EXT_PATH("my_dolphin")'
-```
 
 ## Requirements
 
