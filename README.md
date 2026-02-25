@@ -1,6 +1,6 @@
 # 🎨 Theme Manager for Flipper Zero
 
-[![Build](https://github.com/Hoasker/flipper-theme-manager/actions/workflows/build.yml/badge.svg)](https://github.com/Hoasker/flipper-theme-manager/actions)
+
 
 Manage dolphin animation themes directly from your Flipper Zero — no PC required.
 
