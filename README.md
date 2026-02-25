@@ -6,12 +6,12 @@ Manage dolphin animation themes directly from your Flipper Zero — no PC requir
 
 ## Download
 
-- [**Flipper Apps Catalog**](https://lab.flipper.net/apps/theme_manager) (coming soon)
-- [**GitHub Releases**](https://github.com/Hoasker/flipper-theme-manager/releases)
+- Flipper Apps Catalog (coming soon)
+- GitHub Releases: https://github.com/Hoasker/flipper-theme-manager/releases
 
 ## Screenshots
 
-Please see the [GitHub repository](https://github.com/Hoasker/flipper-theme-manager) for screenshots and a full workflow GIF.
+Please see the GitHub repository (https://github.com/Hoasker/flipper-theme-manager) for screenshots and a full workflow GIF.
 
 ## Features
 
@@ -29,7 +29,7 @@ Please see the [GitHub repository](https://github.com/Hoasker/flipper-theme-mana
 
 ### From Releases (recommended)
 
-1. Download `theme_manager.fap` from [Releases](https://github.com/Hoasker/flipper-theme-manager/releases)
+1. Download `theme_manager.fap` from Releases: https://github.com/Hoasker/flipper-theme-manager/releases
 2. Copy to your Flipper's SD card: `/ext/apps/Tools/`
 
 ### Build from source
@@ -103,4 +103,4 @@ ufbt CFLAGS='-DCUSTOM_DOLPHIN_PATH=EXT_PATH("my_dolphin")'
 
 ## License
 
-[MIT](https://github.com/Hoasker/flipper-theme-manager/blob/main/LICENSE)
+MIT: https://github.com/Hoasker/flipper-theme-manager/blob/main/LICENSE
