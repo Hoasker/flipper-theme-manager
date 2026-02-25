@@ -6,25 +6,44 @@
 #include <gui/modules/dialog_ex.h>
 #include <gui/modules/popup.h>
 #include <gui/modules/loading.h>
-#include <gui/modules/widget.h>
+#include <gui/view.h>
 #include <storage/storage.h>
+#include <toolbox/compress.h>
 
 #define TAG "ThemeManager"
 
+/* Paths — override at compile time for custom firmwares:
+ *   ufbt CFLAGS='-DCUSTOM_ANIMATION_PACKS_PATH=EXT_PATH("my_anims")' */
+#ifndef CUSTOM_ANIMATION_PACKS_PATH
 #define ANIMATION_PACKS_PATH EXT_PATH("animation_packs")
-#define DOLPHIN_PATH         EXT_PATH("dolphin")
-#define MANIFEST_FILENAME    "manifest.txt"
-#define META_FILENAME        "meta.txt"
-#define ANIMS_DIRNAME        "Anims"
-#define DOLPHIN_MANIFEST     DOLPHIN_PATH "/" MANIFEST_FILENAME
-#define DOLPHIN_BACKUP_PATH  EXT_PATH("dolphin_backup")
-#define MANIFEST_HEADER      "Filetype: Flipper Animation Manifest"
+#else
+#define ANIMATION_PACKS_PATH CUSTOM_ANIMATION_PACKS_PATH
+#endif
+
+#ifndef CUSTOM_DOLPHIN_PATH
+#define DOLPHIN_PATH EXT_PATH("dolphin")
+#else
+#define DOLPHIN_PATH CUSTOM_DOLPHIN_PATH
+#endif
+
+#define MANIFEST_FILENAME   "manifest.txt"
+#define META_FILENAME       "meta.txt"
+#define ANIMS_DIRNAME       "Anims"
+#define DOLPHIN_MANIFEST    DOLPHIN_PATH "/" MANIFEST_FILENAME
+#define DOLPHIN_BACKUP_PATH EXT_PATH("dolphin_backup")
+#define MANIFEST_HEADER     "Filetype: Flipper Animation Manifest"
 
 #define MAX_THEMES    64
 #define MAX_NAME_LEN  64
 #define MAX_LABEL_LEN 32
 
 #define MENU_INDEX_RESTORE (MAX_THEMES + 1)
+
+#define PREVIEW_MAX_BM_SIZE 2048 /* max .bm file size (compressed or raw) */
+#define PREVIEW_DRAW_X      2
+#define PREVIEW_DRAW_Y      2
+#define PREVIEW_DRAW_W      48
+#define PREVIEW_DRAW_H      32
 
 typedef enum {
     ThemeTypePack,
@@ -43,12 +62,25 @@ typedef enum {
 } ThemeManagerView;
 
 typedef struct {
+    char name[MAX_NAME_LEN];
+    char type_label[16];
+    uint32_t anim_count;
+    char size_str[16];
+
+    uint8_t* frame_data;
+    uint32_t frame_size;
+    uint8_t frame_w;
+    uint8_t frame_h;
+    bool preview_loaded;
+} InfoViewModel;
+
+typedef struct {
     Storage* storage;
     Gui* gui;
 
     ViewDispatcher* view_dispatcher;
     Submenu* submenu;
-    Widget* info_widget;
+    View* info_view;
     DialogEx* confirm_dialog;
     DialogEx* reboot_dialog;
     DialogEx* delete_dialog;
@@ -77,17 +109,17 @@ static void theme_manager_submenu_callback(void* context, uint32_t index);
 static void theme_manager_confirm_callback(DialogExResult result, void* context);
 static void theme_manager_reboot_callback(DialogExResult result, void* context);
 static void theme_manager_delete_callback(DialogExResult result, void* context);
-static void
-    theme_manager_info_button_callback(GuiButtonType button, InputType input_type, void* context);
 static void theme_manager_popup_callback(void* context);
 static void theme_manager_show_error(ThemeManagerApp* app, const char* message);
 static void theme_manager_show_info(ThemeManagerApp* app, uint32_t index);
 static bool theme_manager_delete_theme(ThemeManagerApp* app, uint32_t index);
 static void theme_manager_populate_submenu(ThemeManagerApp* app);
 
+static void theme_manager_info_draw(Canvas* canvas, void* model);
+static bool theme_manager_info_input(InputEvent* event, void* context);
+
 static uint32_t theme_manager_nav_exit(void* context);
 static uint32_t theme_manager_nav_submenu(void* context);
-static uint32_t theme_manager_nav_info(void* context);
 
 // -------------------------------------------------------------------
 // Parse manifest.txt — validate header and count "Name:" entries
@@ -132,6 +164,273 @@ static bool
 
     furi_string_free(accum);
     return true;
+}
+
+// -------------------------------------------------------------------
+// Parse meta.txt — extract Width and Height values
+// Returns true if both dimensions found
+// -------------------------------------------------------------------
+static bool theme_manager_parse_meta_dimensions(
+    ThemeManagerApp* app,
+    const char* path,
+    uint8_t* out_w,
+    uint8_t* out_h) {
+    *out_w = 0;
+    *out_h = 0;
+
+    File* file = storage_file_alloc(app->storage);
+    if(!storage_file_open(file, path, FSAM_READ, FSOM_OPEN_EXISTING)) {
+        storage_file_free(file);
+        return false;
+    }
+
+    FuriString* accum = furi_string_alloc();
+    char buf[128];
+    uint16_t bytes_read;
+
+    while((bytes_read = storage_file_read(file, buf, sizeof(buf) - 1)) > 0) {
+        buf[bytes_read] = '\0';
+        furi_string_cat_str(accum, buf);
+    }
+
+    storage_file_close(file);
+    storage_file_free(file);
+
+    const char* text = furi_string_get_cstr(accum);
+    bool found_w = false;
+    bool found_h = false;
+
+    const char* w_ptr = strstr(text, "Width:");
+    if(w_ptr) {
+        uint32_t val = 0;
+        if(sscanf(w_ptr, "Width: %lu", &val) == 1 && val > 0 && val <= 128) {
+            *out_w = (uint8_t)val;
+            found_w = true;
+        }
+    }
+
+    const char* h_ptr = strstr(text, "Height:");
+    if(h_ptr) {
+        uint32_t val = 0;
+        if(sscanf(h_ptr, "Height: %lu", &val) == 1 && val > 0 && val <= 64) {
+            *out_h = (uint8_t)val;
+            found_h = true;
+        }
+    }
+
+    furi_string_free(accum);
+    return found_w && found_h;
+}
+
+// -------------------------------------------------------------------
+// Get the first animation name from manifest.txt
+// Returns true if found, writes name to out_name
+// -------------------------------------------------------------------
+static bool theme_manager_get_first_anim_name(
+    ThemeManagerApp* app,
+    const char* manifest_path,
+    char* out_name,
+    size_t out_name_size) {
+    File* file = storage_file_alloc(app->storage);
+    if(!storage_file_open(file, manifest_path, FSAM_READ, FSOM_OPEN_EXISTING)) {
+        storage_file_free(file);
+        return false;
+    }
+
+    FuriString* accum = furi_string_alloc();
+    char buf[128];
+    uint16_t bytes_read;
+
+    while((bytes_read = storage_file_read(file, buf, sizeof(buf) - 1)) > 0) {
+        buf[bytes_read] = '\0';
+        furi_string_cat_str(accum, buf);
+    }
+
+    storage_file_close(file);
+    storage_file_free(file);
+
+    const char* text = furi_string_get_cstr(accum);
+    const char* name_ptr = strstr(text, "Name:");
+    bool found = false;
+
+    if(name_ptr) {
+        name_ptr += 5; /* skip "Name:" */
+        while(*name_ptr == ' ') name_ptr++; /* skip spaces */
+
+        size_t i = 0;
+        while(name_ptr[i] != '\0' && name_ptr[i] != '\n' && name_ptr[i] != '\r' &&
+              i < out_name_size - 1) {
+            out_name[i] = name_ptr[i];
+            i++;
+        }
+        out_name[i] = '\0';
+        if(i > 0) found = true;
+    }
+
+    furi_string_free(accum);
+    return found;
+}
+
+// -------------------------------------------------------------------
+// Load preview frame (frame_0.bm) for a theme
+// Determines path based on theme type, loads raw XBM data
+// -------------------------------------------------------------------
+static void theme_manager_load_preview(ThemeManagerApp* app, uint32_t index) {
+    with_view_model(
+        app->info_view,
+        InfoViewModel * model,
+        {
+            if(model->frame_data) {
+                free(model->frame_data);
+                model->frame_data = NULL;
+            }
+            model->preview_loaded = false;
+            model->frame_w = 0;
+            model->frame_h = 0;
+            model->frame_size = 0;
+        },
+        false);
+
+    if(index >= app->theme_count) return;
+
+    const char* name = app->theme_names[index];
+    ThemeType type = app->theme_types[index];
+
+    FuriString* meta_path = furi_string_alloc();
+    FuriString* frame_path = furi_string_alloc();
+
+    switch(type) {
+    case ThemeTypeSingle:
+        furi_string_printf(meta_path, "%s/%s/%s", ANIMATION_PACKS_PATH, name, META_FILENAME);
+        furi_string_printf(frame_path, "%s/%s/frame_0.bm", ANIMATION_PACKS_PATH, name);
+        break;
+
+    case ThemeTypePack: {
+        FuriString* manifest =
+            furi_string_alloc_printf("%s/%s/%s", ANIMATION_PACKS_PATH, name, MANIFEST_FILENAME);
+        char first_anim[MAX_NAME_LEN];
+        if(theme_manager_get_first_anim_name(
+               app, furi_string_get_cstr(manifest), first_anim, sizeof(first_anim))) {
+            furi_string_printf(
+                meta_path,
+                "%s/%s/%s/%s",
+                ANIMATION_PACKS_PATH,
+                name,
+                first_anim,
+                META_FILENAME);
+            furi_string_printf(
+                frame_path, "%s/%s/%s/frame_0.bm", ANIMATION_PACKS_PATH, name, first_anim);
+        }
+        furi_string_free(manifest);
+        break;
+    }
+
+    case ThemeTypeAnimsPack: {
+        FuriString* manifest = furi_string_alloc_printf(
+            "%s/%s/%s/%s", ANIMATION_PACKS_PATH, name, ANIMS_DIRNAME, MANIFEST_FILENAME);
+        char first_anim[MAX_NAME_LEN];
+        if(theme_manager_get_first_anim_name(
+               app, furi_string_get_cstr(manifest), first_anim, sizeof(first_anim))) {
+            furi_string_printf(
+                meta_path,
+                "%s/%s/%s/%s/%s",
+                ANIMATION_PACKS_PATH,
+                name,
+                ANIMS_DIRNAME,
+                first_anim,
+                META_FILENAME);
+            furi_string_printf(
+                frame_path,
+                "%s/%s/%s/%s/frame_0.bm",
+                ANIMATION_PACKS_PATH,
+                name,
+                ANIMS_DIRNAME,
+                first_anim);
+        }
+        furi_string_free(manifest);
+        break;
+    }
+    }
+
+    uint8_t w = 0, h = 0;
+    if(furi_string_size(meta_path) == 0 ||
+       !theme_manager_parse_meta_dimensions(app, furi_string_get_cstr(meta_path), &w, &h)) {
+        FURI_LOG_W(TAG, "Preview: can't parse meta for %s", name);
+        furi_string_free(meta_path);
+        furi_string_free(frame_path);
+        return;
+    }
+
+    File* file = storage_file_alloc(app->storage);
+    if(!storage_file_open(
+           file, furi_string_get_cstr(frame_path), FSAM_READ, FSOM_OPEN_EXISTING)) {
+        FURI_LOG_W(TAG, "Preview: can't open %s", furi_string_get_cstr(frame_path));
+        storage_file_free(file);
+        furi_string_free(meta_path);
+        furi_string_free(frame_path);
+        return;
+    }
+
+    FileInfo file_info;
+    storage_common_stat(app->storage, furi_string_get_cstr(frame_path), &file_info);
+
+    if(file_info.size > PREVIEW_MAX_BM_SIZE || file_info.size < 2) {
+        FURI_LOG_W(TAG, "Preview: bad size %llu", file_info.size);
+        storage_file_close(file);
+        storage_file_free(file);
+        furi_string_free(meta_path);
+        furi_string_free(frame_path);
+        return;
+    }
+
+    uint8_t* raw = malloc(file_info.size);
+    uint16_t read_bytes = storage_file_read(file, raw, file_info.size);
+    storage_file_close(file);
+    storage_file_free(file);
+
+    if(read_bytes != file_info.size) {
+        FURI_LOG_E(TAG, "Preview: read failed");
+        free(raw);
+        furi_string_free(meta_path);
+        furi_string_free(frame_path);
+        return;
+    }
+
+    uint32_t decoded_size = ((uint32_t)((w + 7) / 8)) * h;
+    CompressIcon* compress = compress_icon_alloc(decoded_size);
+
+    uint8_t* decoded = NULL;
+    compress_icon_decode(compress, raw, &decoded);
+    free(raw);
+
+    if(!decoded) {
+        FURI_LOG_W(TAG, "Preview: decompress failed for %s", name);
+        compress_icon_free(compress);
+        furi_string_free(meta_path);
+        furi_string_free(frame_path);
+        return;
+    }
+
+    uint8_t* xbm_data = malloc(decoded_size);
+    memcpy(xbm_data, decoded, decoded_size);
+    compress_icon_free(compress);
+
+    with_view_model(
+        app->info_view,
+        InfoViewModel * model,
+        {
+            model->frame_data = xbm_data;
+            model->frame_size = decoded_size;
+            model->frame_w = w;
+            model->frame_h = h;
+            model->preview_loaded = true;
+        },
+        false);
+
+    FURI_LOG_I(TAG, "Preview loaded: %s (%ux%u, %lu bytes)", name, w, h, decoded_size);
+
+    furi_string_free(meta_path);
+    furi_string_free(frame_path);
 }
 
 // -------------------------------------------------------------------
@@ -431,13 +730,165 @@ static bool theme_manager_delete_theme(ThemeManagerApp* app, uint32_t index) {
 }
 
 // -------------------------------------------------------------------
-// Show theme info screen (Widget view)
+// Custom Info View — draw callback
+// Renders preview thumbnail (left) + theme info text (right) + buttons
+// -------------------------------------------------------------------
+static void theme_manager_info_draw(Canvas* canvas, void* _model) {
+    InfoViewModel* model = _model;
+
+    canvas_clear(canvas);
+    canvas_set_color(canvas, ColorBlack);
+
+    canvas_draw_frame(
+        canvas,
+        PREVIEW_DRAW_X - 1,
+        PREVIEW_DRAW_Y - 1,
+        PREVIEW_DRAW_W + 2,
+        PREVIEW_DRAW_H + 2);
+
+    if(model->preview_loaded && model->frame_data) {
+        uint8_t src_w = model->frame_w;
+        uint8_t src_h = model->frame_h;
+        uint8_t src_row_bytes = (src_w + 7) / 8;
+
+        uint8_t x_offset = (src_w < PREVIEW_DRAW_W) ? (PREVIEW_DRAW_W - src_w) / 2 : 0;
+        uint8_t y_offset = (src_h < PREVIEW_DRAW_H) ? (PREVIEW_DRAW_H - src_h) / 2 : 0;
+
+        uint8_t draw_w = (src_w < PREVIEW_DRAW_W) ? src_w : PREVIEW_DRAW_W;
+        uint8_t draw_h = (src_h < PREVIEW_DRAW_H) ? src_h : PREVIEW_DRAW_H;
+
+        for(uint8_t py = 0; py < draw_h; py++) {
+            uint8_t sy = (src_h > PREVIEW_DRAW_H) ? (uint8_t)(py * src_h / PREVIEW_DRAW_H) : py;
+
+            for(uint8_t px = 0; px < draw_w; px++) {
+                uint8_t sx =
+                    (src_w > PREVIEW_DRAW_W) ? (uint8_t)(px * src_w / PREVIEW_DRAW_W) : px;
+
+                uint32_t byte_idx = (uint32_t)sy * src_row_bytes + sx / 8;
+                if(byte_idx < model->frame_size) {
+                    if(model->frame_data[byte_idx] & (1 << (sx % 8))) {
+                        canvas_draw_dot(
+                            canvas,
+                            PREVIEW_DRAW_X + x_offset + px,
+                            PREVIEW_DRAW_Y + y_offset + py);
+                    }
+                }
+            }
+        }
+    } else {
+        canvas_set_font(canvas, FontSecondary);
+        canvas_draw_str_aligned(
+            canvas,
+            PREVIEW_DRAW_X + PREVIEW_DRAW_W / 2,
+            PREVIEW_DRAW_Y + PREVIEW_DRAW_H / 2,
+            AlignCenter,
+            AlignCenter,
+            "No preview");
+    }
+
+    uint8_t text_x = PREVIEW_DRAW_X + PREVIEW_DRAW_W + 4;
+
+    canvas_set_font(canvas, FontPrimary);
+    char display_name[18];
+    strncpy(display_name, model->name, sizeof(display_name) - 1);
+    display_name[sizeof(display_name) - 1] = '\0';
+    if(strlen(model->name) > sizeof(display_name) - 1) {
+        display_name[sizeof(display_name) - 4] = '.';
+        display_name[sizeof(display_name) - 3] = '.';
+        display_name[sizeof(display_name) - 2] = '\0';
+    }
+    canvas_draw_str(canvas, text_x, PREVIEW_DRAW_Y + 8, display_name);
+
+    canvas_set_font(canvas, FontSecondary);
+    canvas_draw_str(canvas, text_x, PREVIEW_DRAW_Y + 18, model->type_label);
+
+    char anim_str[20];
+    snprintf(anim_str, sizeof(anim_str), "Anims: %lu", model->anim_count);
+    canvas_draw_str(canvas, text_x, PREVIEW_DRAW_Y + 27, anim_str);
+
+    char size_line[24];
+    snprintf(size_line, sizeof(size_line), "Size: %s", model->size_str);
+    canvas_draw_str(canvas, text_x, PREVIEW_DRAW_Y + 36, size_line);
+
+    /* Bottom buttons */
+    canvas_set_font(canvas, FontSecondary);
+
+    canvas_draw_str_aligned(canvas, 2, 63, AlignLeft, AlignBottom, "<Back");
+
+    canvas_draw_str_aligned(canvas, 64, 63, AlignCenter, AlignBottom, "Del[OK]");
+
+    canvas_draw_str_aligned(canvas, 126, 63, AlignRight, AlignBottom, "Apply>");
+}
+
+// -------------------------------------------------------------------
+// Custom Info View — input callback
+// Handles Back (left), Apply (right), Delete (OK)
+// -------------------------------------------------------------------
+static bool theme_manager_info_input(InputEvent* event, void* context) {
+    ThemeManagerApp* app = context;
+
+    if(event->type != InputTypeShort) return false;
+
+    if(event->key == InputKeyLeft) {
+        view_dispatcher_switch_to_view(app->view_dispatcher, ThemeManagerViewSubmenu);
+        return true;
+
+    } else if(event->key == InputKeyRight) {
+        uint32_t index = app->selected_index;
+        if(index >= app->theme_count) return true;
+
+        dialog_ex_set_header(
+            app->confirm_dialog, app->theme_names[index], 64, 0, AlignCenter, AlignTop);
+
+        furi_string_printf(app->dialog_text, "Apply this theme?\nBackup will be created.");
+        dialog_ex_set_text(
+            app->confirm_dialog,
+            furi_string_get_cstr(app->dialog_text),
+            64,
+            26,
+            AlignCenter,
+            AlignTop);
+
+        dialog_ex_set_left_button_text(app->confirm_dialog, "Back");
+        dialog_ex_set_right_button_text(app->confirm_dialog, "Apply");
+
+        view_dispatcher_switch_to_view(app->view_dispatcher, ThemeManagerViewConfirm);
+        return true;
+
+    } else if(event->key == InputKeyOk) {
+        uint32_t index = app->selected_index;
+        if(index >= app->theme_count) return true;
+
+        dialog_ex_set_header(app->delete_dialog, "Delete Theme?", 64, 0, AlignCenter, AlignTop);
+
+        furi_string_printf(
+            app->dialog_text, "%s\nThis cannot be undone!", app->theme_names[index]);
+        dialog_ex_set_text(
+            app->delete_dialog,
+            furi_string_get_cstr(app->dialog_text),
+            64,
+            26,
+            AlignCenter,
+            AlignTop);
+
+        dialog_ex_set_left_button_text(app->delete_dialog, "Cancel");
+        dialog_ex_set_right_button_text(app->delete_dialog, "Delete");
+
+        view_dispatcher_switch_to_view(app->view_dispatcher, ThemeManagerViewDeleteConfirm);
+        return true;
+
+    }
+
+    return false;
+}
+
+// -------------------------------------------------------------------
+// Show theme info screen (custom View with preview)
 // -------------------------------------------------------------------
 static void theme_manager_show_info(ThemeManagerApp* app, uint32_t index) {
     if(index >= app->theme_count) return;
 
     app->selected_index = index;
-    widget_reset(app->info_widget);
 
     const char* name = app->theme_names[index];
     ThemeType type = app->theme_types[index];
@@ -489,82 +940,22 @@ static void theme_manager_show_info(ThemeManagerApp* app, uint32_t index) {
         snprintf(size_str, sizeof(size_str), "%lu B", (uint32_t)size_bytes);
     }
 
-    widget_add_string_element(app->info_widget, 64, 2, AlignCenter, AlignTop, FontPrimary, name);
+    with_view_model(
+        app->info_view,
+        InfoViewModel * model,
+        {
+            strncpy(model->name, name, MAX_NAME_LEN - 1);
+            model->name[MAX_NAME_LEN - 1] = '\0';
+            snprintf(model->type_label, sizeof(model->type_label), "Type: %s", type_label);
+            model->anim_count = anim_count;
+            strncpy(model->size_str, size_str, sizeof(model->size_str) - 1);
+            model->size_str[sizeof(model->size_str) - 1] = '\0';
+        },
+        false);
 
-    static char info_line1[48];
-    static char info_line2[24];
-
-    snprintf(info_line1, sizeof(info_line1), "Type: %s  Anims: %lu", type_label, anim_count);
-    widget_add_string_element(
-        app->info_widget, 64, 18, AlignCenter, AlignTop, FontSecondary, info_line1);
-
-    snprintf(info_line2, sizeof(info_line2), "Size: %s", size_str);
-    widget_add_string_element(
-        app->info_widget, 64, 30, AlignCenter, AlignTop, FontSecondary, info_line2);
-
-    widget_add_button_element(
-        app->info_widget, GuiButtonTypeLeft, "Back", theme_manager_info_button_callback, app);
-    widget_add_button_element(
-        app->info_widget, GuiButtonTypeCenter, "Delete", theme_manager_info_button_callback, app);
-    widget_add_button_element(
-        app->info_widget, GuiButtonTypeRight, "Apply", theme_manager_info_button_callback, app);
+    theme_manager_load_preview(app, index);
 
     view_dispatcher_switch_to_view(app->view_dispatcher, ThemeManagerViewInfo);
-}
-
-// -------------------------------------------------------------------
-// Widget button callback for Info screen
-// -------------------------------------------------------------------
-static void
-    theme_manager_info_button_callback(GuiButtonType button, InputType input_type, void* context) {
-    ThemeManagerApp* app = context;
-    if(input_type != InputTypeShort) return;
-
-    if(button == GuiButtonTypeLeft) {
-        view_dispatcher_switch_to_view(app->view_dispatcher, ThemeManagerViewSubmenu);
-
-    } else if(button == GuiButtonTypeRight) {
-        uint32_t index = app->selected_index;
-        if(index >= app->theme_count) return;
-
-        dialog_ex_set_header(
-            app->confirm_dialog, app->theme_names[index], 64, 0, AlignCenter, AlignTop);
-
-        furi_string_printf(app->dialog_text, "Apply this theme?\nBackup will be created.");
-        dialog_ex_set_text(
-            app->confirm_dialog,
-            furi_string_get_cstr(app->dialog_text),
-            64,
-            26,
-            AlignCenter,
-            AlignTop);
-
-        dialog_ex_set_left_button_text(app->confirm_dialog, "Back");
-        dialog_ex_set_right_button_text(app->confirm_dialog, "Apply");
-
-        view_dispatcher_switch_to_view(app->view_dispatcher, ThemeManagerViewConfirm);
-
-    } else if(button == GuiButtonTypeCenter) {
-        uint32_t index = app->selected_index;
-        if(index >= app->theme_count) return;
-
-        dialog_ex_set_header(app->delete_dialog, "Delete Theme?", 64, 0, AlignCenter, AlignTop);
-
-        furi_string_printf(
-            app->dialog_text, "%s\nThis cannot be undone!", app->theme_names[index]);
-        dialog_ex_set_text(
-            app->delete_dialog,
-            furi_string_get_cstr(app->dialog_text),
-            64,
-            26,
-            AlignCenter,
-            AlignTop);
-
-        dialog_ex_set_left_button_text(app->delete_dialog, "Cancel");
-        dialog_ex_set_right_button_text(app->delete_dialog, "Delete");
-
-        view_dispatcher_switch_to_view(app->view_dispatcher, ThemeManagerViewDeleteConfirm);
-    }
 }
 
 // -------------------------------------------------------------------
@@ -644,7 +1035,7 @@ static void theme_manager_confirm_callback(DialogExResult result, void* context)
             theme_manager_show_error(app, "Apply failed!\nCheck SD card.");
         }
     } else {
-        theme_manager_show_info(app, app->selected_index);
+        view_dispatcher_switch_to_view(app->view_dispatcher, ThemeManagerViewInfo);
     }
 }
 
@@ -685,7 +1076,7 @@ static void theme_manager_delete_callback(DialogExResult result, void* context) 
             theme_manager_show_error(app, "Delete failed!\nCheck SD card.");
         }
     } else {
-        theme_manager_show_info(app, app->selected_index);
+        view_dispatcher_switch_to_view(app->view_dispatcher, ThemeManagerViewInfo);
     }
 }
 
@@ -777,11 +1168,6 @@ static uint32_t theme_manager_nav_submenu(void* context) {
     return ThemeManagerViewSubmenu;
 }
 
-static uint32_t theme_manager_nav_info(void* context) {
-    UNUSED(context);
-    return ThemeManagerViewInfo;
-}
-
 // ===================================================================
 // Entry point
 // ===================================================================
@@ -804,15 +1190,31 @@ int32_t theme_manager_app(void* p) {
     view_dispatcher_add_view(
         app->view_dispatcher, ThemeManagerViewSubmenu, submenu_get_view(app->submenu));
 
-    app->info_widget = widget_alloc();
-    view_set_previous_callback(widget_get_view(app->info_widget), theme_manager_nav_submenu);
+    /* Custom Info view with preview */
+    app->info_view = view_alloc();
+    view_allocate_model(app->info_view, ViewModelTypeLocking, sizeof(InfoViewModel));
+    view_set_draw_callback(app->info_view, theme_manager_info_draw);
+    view_set_input_callback(app->info_view, theme_manager_info_input);
+    view_set_context(app->info_view, app);
+    view_set_previous_callback(app->info_view, theme_manager_nav_submenu);
     view_dispatcher_add_view(
-        app->view_dispatcher, ThemeManagerViewInfo, widget_get_view(app->info_widget));
+        app->view_dispatcher, ThemeManagerViewInfo, app->info_view);
+
+    /* Initialize model */
+    with_view_model(
+        app->info_view,
+        InfoViewModel * model,
+        {
+            model->frame_data = NULL;
+            model->preview_loaded = false;
+        },
+        false);
 
     app->confirm_dialog = dialog_ex_alloc();
     dialog_ex_set_result_callback(app->confirm_dialog, theme_manager_confirm_callback);
     dialog_ex_set_context(app->confirm_dialog, app);
-    view_set_previous_callback(dialog_ex_get_view(app->confirm_dialog), theme_manager_nav_info);
+    view_set_previous_callback(
+        dialog_ex_get_view(app->confirm_dialog), theme_manager_nav_submenu);
     view_dispatcher_add_view(
         app->view_dispatcher, ThemeManagerViewConfirm, dialog_ex_get_view(app->confirm_dialog));
 
@@ -826,7 +1228,8 @@ int32_t theme_manager_app(void* p) {
     app->delete_dialog = dialog_ex_alloc();
     dialog_ex_set_result_callback(app->delete_dialog, theme_manager_delete_callback);
     dialog_ex_set_context(app->delete_dialog, app);
-    view_set_previous_callback(dialog_ex_get_view(app->delete_dialog), theme_manager_nav_info);
+    view_set_previous_callback(
+        dialog_ex_get_view(app->delete_dialog), theme_manager_nav_submenu);
     view_dispatcher_add_view(
         app->view_dispatcher,
         ThemeManagerViewDeleteConfirm,
@@ -847,6 +1250,18 @@ int32_t theme_manager_app(void* p) {
     view_dispatcher_switch_to_view(app->view_dispatcher, ThemeManagerViewSubmenu);
     view_dispatcher_run(app->view_dispatcher);
 
+    /* Cleanup: free preview data */
+    with_view_model(
+        app->info_view,
+        InfoViewModel * model,
+        {
+            if(model->frame_data) {
+                free(model->frame_data);
+                model->frame_data = NULL;
+            }
+        },
+        false);
+
     view_dispatcher_remove_view(app->view_dispatcher, ThemeManagerViewLoading);
     view_dispatcher_remove_view(app->view_dispatcher, ThemeManagerViewPopup);
     view_dispatcher_remove_view(app->view_dispatcher, ThemeManagerViewDeleteConfirm);
@@ -860,7 +1275,7 @@ int32_t theme_manager_app(void* p) {
     dialog_ex_free(app->delete_dialog);
     dialog_ex_free(app->reboot_dialog);
     dialog_ex_free(app->confirm_dialog);
-    widget_free(app->info_widget);
+    view_free(app->info_view);
     submenu_free(app->submenu);
     view_dispatcher_free(app->view_dispatcher);
 
