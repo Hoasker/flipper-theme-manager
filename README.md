@@ -16,12 +16,12 @@ Please see the GitHub repository (https://github.com/Hoasker/flipper-theme-manag
 ## Features
 
 - Scan SD card — auto-detects animation packs in /ext/animation_packs/
-- **3 theme formats** — Pack `(P)`, Anim Pack `(A)`, Single animation `(S)`
+- **3 theme formats** — Pack (P), Anim Pack (A), Single animation (S)
 - **Animation preview** — thumbnail of first frame on the info screen
 - **Theme info** — view type, animation count, and size before applying
-- **One-tap apply** — merges theme files into `/ext/dolphin/`
+- **One-tap apply** — merges theme files into /ext/dolphin/
 - **Delete themes** — remove theme packs directly from the app
-- **Auto-backup** — backs up entire `/ext/dolphin/` before overwriting
+- **Auto-backup** — backs up entire /ext/dolphin/ before overwriting
 - **Restore** — revert to previous theme from the menu
 - **Reboot dialog** — apply and reboot instantly, or keep browsing
 
