@@ -11,15 +11,7 @@ Manage dolphin animation themes directly from your Flipper Zero — no PC requir
 
 ## Screenshots
 
-| Menu | Theme Info | Apply |
-|:---:|:---:|:---:|
-| ![Menu](screenshots/2.png) | ![Info](screenshots/3.png) | ![Apply](screenshots/4.png) |
-
-| Confirm | Reboot | Delete |
-|:---:|:---:|:---:|
-| ![Confirm](screenshots/5.png) | ![Reboot](screenshots/7.png) | ![Delete](screenshots/8.png) |
-
-![Full workflow](screenshots/all_process.gif)
+Please see the [GitHub repository](https://github.com/Hoasker/flipper-theme-manager) for screenshots and a full workflow GIF.
 
 ## Features
 
