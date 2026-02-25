@@ -27,12 +27,12 @@ Please see the GitHub repository (https://github.com/Hoasker/flipper-theme-manag
 
 ## Installation
 
-### From Releases (recommended)
+**From Releases (recommended)**
 
 1. Download `theme_manager.fap` from Releases: https://github.com/Hoasker/flipper-theme-manager/releases
 2. Copy to your Flipper's SD card: `/ext/apps/Tools/`
 
-### Build from source
+**Build from source**
 
 ```bash
 cd theme_manager
@@ -45,7 +45,7 @@ Copy `dist/theme_manager.fap` to SD card, or use `ufbt launch` to build & run.
 
 Place theme folders in `/ext/animation_packs/` on your SD card:
 
-### Format A — Pack (manifest + animation folders)
+**Format A — Pack (manifest + animation folders)**
 ```
 animation_packs/MyTheme/
 ├── manifest.txt
@@ -57,7 +57,7 @@ animation_packs/MyTheme/
     └── frame_*.bm
 ```
 
-### Format B — Anim Pack (Anims/ subdirectory)
+**Format B — Anim Pack (Anims/ subdirectory)**
 ```
 animation_packs/MyTheme/
 └── Anims/
@@ -66,7 +66,7 @@ animation_packs/MyTheme/
     └── Anim2/
 ```
 
-### Format C — Single Animation
+**Format C — Single Animation**
 ```
 animation_packs/MySingleAnim/
 ├── meta.txt
