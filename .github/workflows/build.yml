@@ -1,19 +1,23 @@
-name: "FAP: Build and Lint"
+name: "FAP: Build and Release"
 
 on:
   push:
-    branches: [main]
-    tags: ["v*"]
+    branches:
+      - main
+    tags:
+      - "v*"
   pull_request:
-    branches: [main]
+    branches:
+      - main
 
 jobs:
-  build-and-lint:
+  build:
     runs-on: ubuntu-latest
-    name: "Build & Lint FAP"
+    permissions:
+      contents: write
 
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Lint with ufbt
@@ -21,38 +25,15 @@ jobs:
         with:
           task: lint
 
-      - name: Build with ufbt
-        uses: flipperdevices/flipperzero-ufbt-action@v0.1
+      - name: Build FAP with ufbt
         id: build-app
+        uses: flipperdevices/flipperzero-ufbt-action@v0.1
         with:
           sdk-channel: release
 
-      - name: Upload build artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: theme-manager-${{ steps.build-app.outputs.suffix }}
-          path: ${{ steps.build-app.outputs.fap-artifacts }}
-
-  release:
-    needs: build-and-lint
-    if: startsWith(github.ref, 'refs/tags/v')
-    runs-on: ubuntu-latest
-    name: "Create Release"
-    permissions:
-      contents: write
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Download build artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: theme-manager-release
-          path: artifacts
-
       - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: artifacts/**
+          files: ${{ steps.build-app.outputs.fap-artifacts }}
           generate_release_notes: true
