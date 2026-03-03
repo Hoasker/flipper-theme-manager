@@ -52,7 +52,7 @@
 #define INFO_TEXT_Y_SIZE  36
 #define INFO_TEXT_Y_BTN   63
 
-#define INFO_NAME_MAX_LEN 13 /* max visible chars for theme name in Info view */
+#define INFO_NAME_MAX_LEN      13 /* max visible chars for theme name in Info view */
 #define MENU_LABEL_MAX_VISIBLE 26 /* max visible chars in submenu label */
 
 typedef enum {
