@@ -1,3 +1,10 @@
+v1.3:
+- Refactor: unified ThemeEntry struct (replaces 3 separate arrays)
+- Feature: themes sorted alphabetically (case-insensitive)
+- Feature: submenu header shows theme count "Themes (N)"
+- Improve: cached theme metadata (anim count, size) — Info screen loads instantly on repeat
+- Improve: insertion sort for consistent alphabetical ordering
+
 v1.2:
 - Refactor: shared file-reading utility (removed ~80 lines of code duplication)
 - Fix: memory management in preview loader (goto cleanup pattern)
