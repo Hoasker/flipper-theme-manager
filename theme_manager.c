@@ -41,13 +41,13 @@
 
 #define MENU_INDEX_RESTORE (MAX_THEMES + 1)
 
-#define PREVIEW_MAX_BM_SIZE  2048 /* max .bm file size (compressed or raw) */
-#define PREVIEW_MAX_FRAMES   4    /* max frames for animated preview */
-#define PREVIEW_DEFAULT_MS   200  /* default frame interval ms */
-#define PREVIEW_DRAW_X       2
-#define PREVIEW_DRAW_Y       2
-#define PREVIEW_DRAW_W       48
-#define PREVIEW_DRAW_H       32
+#define PREVIEW_MAX_BM_SIZE 2048 /* max .bm file size (compressed or raw) */
+#define PREVIEW_MAX_FRAMES  4 /* max frames for animated preview */
+#define PREVIEW_DEFAULT_MS  200 /* default frame interval ms */
+#define PREVIEW_DRAW_X      2
+#define PREVIEW_DRAW_Y      2
+#define PREVIEW_DRAW_W      48
+#define PREVIEW_DRAW_H      32
 
 #define REBOOT_COUNTDOWN_SEC 5
 
@@ -533,8 +533,7 @@ static void theme_manager_load_favorites(ThemeManagerApp* app) {
         /* Extract name until newline or end */
         char fav_name[MAX_NAME_LEN];
         size_t len = 0;
-        while(ptr[len] != '\0' && ptr[len] != '\n' && ptr[len] != '\r' &&
-              len < MAX_NAME_LEN - 1) {
+        while(ptr[len] != '\0' && ptr[len] != '\n' && ptr[len] != '\r' && len < MAX_NAME_LEN - 1) {
             fav_name[len] = ptr[len];
             len++;
         }
@@ -684,10 +683,8 @@ static void theme_manager_reboot_tick(void* context) {
 // -------------------------------------------------------------------
 // Show reboot timer view with countdown
 // -------------------------------------------------------------------
-static void theme_manager_show_reboot_timer(
-    ThemeManagerApp* app,
-    const char* header,
-    const char* body) {
+static void
+    theme_manager_show_reboot_timer(ThemeManagerApp* app, const char* header, const char* body) {
     with_view_model(
         app->reboot_timer_view,
         RebootTimerModel * model,
@@ -1029,39 +1026,40 @@ static void theme_manager_info_draw(Canvas* canvas, void* _model) {
         uint8_t* frame_data = model->frames[cf];
         uint32_t frame_size = model->frame_sizes[cf];
         if(frame_data && frame_size > 0) {
-        uint8_t src_w = model->frame_w;
-        uint8_t src_h = model->frame_h;
-        uint8_t src_row_bytes = (src_w + 7) / 8;
+            uint8_t src_w = model->frame_w;
+            uint8_t src_h = model->frame_h;
+            uint8_t src_row_bytes = (src_w + 7) / 8;
 
-        uint8_t x_offset = (src_w < PREVIEW_DRAW_W) ? (PREVIEW_DRAW_W - src_w) / 2 : 0;
-        uint8_t y_offset = (src_h < PREVIEW_DRAW_H) ? (PREVIEW_DRAW_H - src_h) / 2 : 0;
+            uint8_t x_offset = (src_w < PREVIEW_DRAW_W) ? (PREVIEW_DRAW_W - src_w) / 2 : 0;
+            uint8_t y_offset = (src_h < PREVIEW_DRAW_H) ? (PREVIEW_DRAW_H - src_h) / 2 : 0;
 
-        uint8_t draw_w = (src_w < PREVIEW_DRAW_W) ? src_w : PREVIEW_DRAW_W;
-        uint8_t draw_h = (src_h < PREVIEW_DRAW_H) ? src_h : PREVIEW_DRAW_H;
+            uint8_t draw_w = (src_w < PREVIEW_DRAW_W) ? src_w : PREVIEW_DRAW_W;
+            uint8_t draw_h = (src_h < PREVIEW_DRAW_H) ? src_h : PREVIEW_DRAW_H;
 
-        for(uint8_t py = 0; py < draw_h; py++) {
-            uint8_t sy = (src_h > PREVIEW_DRAW_H) ? (uint8_t)(py * src_h / PREVIEW_DRAW_H) : py;
+            for(uint8_t py = 0; py < draw_h; py++) {
+                uint8_t sy = (src_h > PREVIEW_DRAW_H) ? (uint8_t)(py * src_h / PREVIEW_DRAW_H) :
+                                                        py;
 
-            for(uint8_t px = 0; px < draw_w; px++) {
-                uint8_t sx = (src_w > PREVIEW_DRAW_W) ? (uint8_t)(px * src_w / PREVIEW_DRAW_W) :
-                                                        px;
+                for(uint8_t px = 0; px < draw_w; px++) {
+                    uint8_t sx =
+                        (src_w > PREVIEW_DRAW_W) ? (uint8_t)(px * src_w / PREVIEW_DRAW_W) : px;
 
-                uint32_t byte_idx = (uint32_t)sy * src_row_bytes + sx / 8;
-                if(byte_idx < frame_size) {
-                    if(frame_data[byte_idx] & (1 << (sx % 8))) {
-                        canvas_draw_dot(
-                            canvas,
-                            PREVIEW_DRAW_X + x_offset + px,
-                            PREVIEW_DRAW_Y + y_offset + py);
+                    uint32_t byte_idx = (uint32_t)sy * src_row_bytes + sx / 8;
+                    if(byte_idx < frame_size) {
+                        if(frame_data[byte_idx] & (1 << (sx % 8))) {
+                            canvas_draw_dot(
+                                canvas,
+                                PREVIEW_DRAW_X + x_offset + px,
+                                PREVIEW_DRAW_Y + y_offset + py);
+                        }
                     }
                 }
             }
-        }
         } else {
             goto no_preview;
         }
     } else {
-no_preview:
+    no_preview:
         canvas_set_font(canvas, FontSecondary);
         canvas_draw_str_aligned(
             canvas,
@@ -1285,8 +1283,7 @@ static void theme_manager_submenu_callback(void* context, uint32_t index) {
 
     if(index == MENU_INDEX_RESTORE) {
         if(theme_manager_restore_backup(app)) {
-            theme_manager_show_reboot_timer(
-                app, "Backup Restored!", "Previous theme restored.");
+            theme_manager_show_reboot_timer(app, "Backup Restored!", "Previous theme restored.");
         } else {
             theme_manager_show_error(app, "No backup found!");
         }
@@ -1322,10 +1319,7 @@ static void theme_manager_confirm_callback(DialogExResult result, void* context)
             }
 
             furi_string_printf(
-                app->dialog_text,
-                "%s. %s",
-                app->themes[app->selected_index].name,
-                type_str);
+                app->dialog_text, "%s. %s", app->themes[app->selected_index].name, type_str);
 
             theme_manager_show_reboot_timer(
                 app, "Theme Applied!", furi_string_get_cstr(app->dialog_text));
@@ -1524,12 +1518,7 @@ int32_t theme_manager_app(void* p) {
 
     /* Initialize info model */
     with_view_model(
-        app->info_view,
-        InfoViewModel * model,
-        {
-            memset(model, 0, sizeof(InfoViewModel));
-        },
-        false);
+        app->info_view, InfoViewModel * model, { memset(model, 0, sizeof(InfoViewModel)); }, false);
 
     app->confirm_dialog = dialog_ex_alloc();
     dialog_ex_set_result_callback(app->confirm_dialog, theme_manager_confirm_callback);
