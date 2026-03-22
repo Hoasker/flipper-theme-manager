@@ -1,3 +1,11 @@
+v1.4.1:
+- Fix: bounded directory recursion (max depth 8) prevents stack overflow
+- Fix: removed dangerous goto in preview draw — uses bool flag pattern
+- Fix: MAX_THEMES reduced to 64 (saves ~9KB RAM)
+- Fix: removed redundant NULL checks on timers (always allocated)
+- Fix: removed unreachable default case in type_label switch
+- Improve: added MAX_DIR_DEPTH constant for recursive dir traversal
+
 v1.4:
 - Feature: favorites system — mark themes with * prefix, grouped at top of menu
 - Feature: animated preview — up to 4 frames cycling on Info screen

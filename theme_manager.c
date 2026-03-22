@@ -35,7 +35,7 @@
 #define FAVORITES_FILENAME  ".favorites.txt"
 #define FAVORITES_PATH      ANIMATION_PACKS_PATH "/" FAVORITES_FILENAME
 
-#define MAX_THEMES    128
+#define MAX_THEMES    64
 #define MAX_NAME_LEN  64
 #define MAX_LABEL_LEN 36
 
@@ -44,6 +44,7 @@
 #define PREVIEW_MAX_BM_SIZE 2048 /* max .bm file size (compressed or raw) */
 #define PREVIEW_MAX_FRAMES  4 /* max frames for animated preview */
 #define PREVIEW_DEFAULT_MS  200 /* default frame interval ms */
+#define MAX_DIR_DEPTH       8 /* max recursion depth for dir size calc */
 #define PREVIEW_DRAW_X      2
 #define PREVIEW_DRAW_Y      2
 #define PREVIEW_DRAW_W      48
@@ -347,9 +348,7 @@ static uint8_t* theme_manager_decode_frame(
 // -------------------------------------------------------------------
 static void theme_manager_load_preview(ThemeManagerApp* app, uint32_t index) {
     /* Stop preview animation timer if running */
-    if(app->preview_timer) {
-        furi_timer_stop(app->preview_timer);
-    }
+    furi_timer_stop(app->preview_timer);
 
     with_view_model(
         app->info_view,
@@ -481,7 +480,10 @@ static void theme_manager_load_preview(ThemeManagerApp* app, uint32_t index) {
 // -------------------------------------------------------------------
 // Calculate total size of a directory (recursive)
 // -------------------------------------------------------------------
-static uint64_t theme_manager_get_dir_size(ThemeManagerApp* app, const char* path) {
+static uint64_t
+    theme_manager_get_dir_size_r(ThemeManagerApp* app, const char* path, uint8_t depth) {
+    if(depth >= MAX_DIR_DEPTH) return 0;
+
     uint64_t total = 0;
     File* dir = storage_file_alloc(app->storage);
 
@@ -497,7 +499,8 @@ static uint64_t theme_manager_get_dir_size(ThemeManagerApp* app, const char* pat
     while(storage_dir_read(dir, &file_info, name, sizeof(name))) {
         furi_string_printf(child_path, "%s/%s", path, name);
         if(file_info.flags & FSF_DIRECTORY) {
-            total += theme_manager_get_dir_size(app, furi_string_get_cstr(child_path));
+            total +=
+                theme_manager_get_dir_size_r(app, furi_string_get_cstr(child_path), depth + 1);
         } else {
             total += file_info.size;
         }
@@ -508,6 +511,10 @@ static uint64_t theme_manager_get_dir_size(ThemeManagerApp* app, const char* pat
     storage_file_free(dir);
 
     return total;
+}
+
+static uint64_t theme_manager_get_dir_size(ThemeManagerApp* app, const char* path) {
+    return theme_manager_get_dir_size_r(app, path, 0);
 }
 
 // -------------------------------------------------------------------
@@ -1021,6 +1028,8 @@ static void theme_manager_info_draw(Canvas* canvas, void* _model) {
     canvas_draw_frame(
         canvas, PREVIEW_DRAW_X - 1, PREVIEW_DRAW_Y - 1, PREVIEW_DRAW_W + 2, PREVIEW_DRAW_H + 2);
 
+    bool has_preview = false;
+
     if(model->preview_loaded && model->frame_count > 0) {
         uint8_t cf = model->current_frame;
         uint8_t* frame_data = model->frames[cf];
@@ -1055,11 +1064,11 @@ static void theme_manager_info_draw(Canvas* canvas, void* _model) {
                     }
                 }
             }
-        } else {
-            goto no_preview;
+            has_preview = true;
         }
-    } else {
-    no_preview:
+    }
+
+    if(!has_preview) {
         canvas_set_font(canvas, FontSecondary);
         canvas_draw_str_aligned(
             canvas,
@@ -1112,7 +1121,7 @@ static bool theme_manager_info_input(InputEvent* event, void* context) {
 
     if(event->key == InputKeyLeft || event->key == InputKeyBack) {
         /* Stop preview timer when leaving info view */
-        if(app->preview_timer) furi_timer_stop(app->preview_timer);
+        furi_timer_stop(app->preview_timer);
         view_dispatcher_switch_to_view(app->view_dispatcher, ThemeManagerViewSubmenu);
         return true;
 
@@ -1123,7 +1132,7 @@ static bool theme_manager_info_input(InputEvent* event, void* context) {
 
     } else if(event->key == InputKeyRight) {
         /* Stop preview timer before switching view */
-        if(app->preview_timer) furi_timer_stop(app->preview_timer);
+        furi_timer_stop(app->preview_timer);
         uint32_t index = app->selected_index;
         if(index >= app->theme_count) return true;
 
@@ -1147,7 +1156,7 @@ static bool theme_manager_info_input(InputEvent* event, void* context) {
 
     } else if(event->key == InputKeyOk) {
         /* Stop preview timer before switching view */
-        if(app->preview_timer) furi_timer_stop(app->preview_timer);
+        furi_timer_stop(app->preview_timer);
         uint32_t index = app->selected_index;
         if(index >= app->theme_count) return true;
 
@@ -1185,7 +1194,7 @@ static void theme_manager_show_info(ThemeManagerApp* app, uint32_t index) {
     const char* name = entry->name;
     ThemeType type = entry->type;
 
-    const char* type_label;
+    const char* type_label = "Unknown";
     uint32_t anim_count = 0;
 
     /* Use cached metadata if available */
@@ -1225,9 +1234,6 @@ static void theme_manager_show_info(ThemeManagerApp* app, uint32_t index) {
         break;
     case ThemeTypeSingle:
         type_label = "Single";
-        break;
-    default:
-        type_label = "Unknown";
         break;
     }
 
