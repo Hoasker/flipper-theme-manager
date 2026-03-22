@@ -1,3 +1,11 @@
+v1.5:
+- Feature: theme file integrity validation — checks meta.txt, frame_0.bm, manifest.txt
+- Feature: invalid themes marked with [!P], [!A], [!S] prefix in menu
+- Feature: Status line on Info screen (OK / Invalid!)
+- Feature: Apply blocked for invalid themes with error popup
+- Cleanup: removed remaining redundant timer NULL checks
+- Cleanup: auto-formatted via ufbt format
+
 v1.4.1:
 - Fix: bounded directory recursion (max depth 8) prevents stack overflow
 - Fix: removed dangerous goto in preview draw — uses bool flag pattern

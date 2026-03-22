@@ -53,11 +53,12 @@
 #define REBOOT_COUNTDOWN_SEC 5
 
 /* Y-offsets for info text (relative to PREVIEW_DRAW_Y) */
-#define INFO_TEXT_Y_NAME  8
-#define INFO_TEXT_Y_TYPE  18
-#define INFO_TEXT_Y_ANIMS 27
-#define INFO_TEXT_Y_SIZE  36
-#define INFO_TEXT_Y_BTN   63
+#define INFO_TEXT_Y_NAME   8
+#define INFO_TEXT_Y_TYPE   18
+#define INFO_TEXT_Y_ANIMS  27
+#define INFO_TEXT_Y_SIZE   36
+#define INFO_TEXT_Y_STATUS 45
+#define INFO_TEXT_Y_BTN    63
 
 #define INFO_NAME_MAX_LEN      13 /* max visible chars for theme name in Info view */
 #define MENU_LABEL_MAX_VISIBLE 30 /* max visible chars in submenu label */
@@ -83,6 +84,7 @@ typedef struct {
     char type_label[16];
     uint32_t anim_count;
     char size_str[16];
+    char status_str[20];
 
     uint8_t* frames[PREVIEW_MAX_FRAMES];
     uint32_t frame_sizes[PREVIEW_MAX_FRAMES];
@@ -107,6 +109,7 @@ typedef struct {
     uint32_t cached_size;
     bool meta_cached;
     bool is_favorite;
+    bool is_valid;
 } ThemeEntry;
 
 typedef struct {
@@ -162,6 +165,7 @@ static void theme_manager_preview_tick(void* context);
 static void theme_manager_load_favorites(ThemeManagerApp* app);
 static void theme_manager_save_favorites(ThemeManagerApp* app);
 static void theme_manager_toggle_favorite(ThemeManagerApp* app, uint32_t index);
+static bool theme_manager_validate_theme(ThemeManagerApp* app, ThemeEntry* entry);
 
 static uint32_t theme_manager_nav_exit(void* context);
 static uint32_t theme_manager_nav_submenu(void* context);
@@ -472,7 +476,7 @@ static void theme_manager_load_preview(ThemeManagerApp* app, uint32_t index) {
     FURI_LOG_I(TAG, "Preview loaded: %s (%ux%u, %u frames)", name, w, h, loaded);
 
     /* Start animation timer if multiple frames loaded */
-    if(loaded > 1 && app->preview_timer) {
+    if(loaded > 1) {
         furi_timer_start(app->preview_timer, furi_ms_to_ticks(PREVIEW_DEFAULT_MS));
     }
 }
@@ -601,6 +605,98 @@ static void theme_manager_toggle_favorite(ThemeManagerApp* app, uint32_t index) 
 }
 
 // -------------------------------------------------------------------
+// Validate theme: check that required files exist
+// -------------------------------------------------------------------
+static bool theme_manager_validate_theme(ThemeManagerApp* app, ThemeEntry* entry) {
+    FuriString* path = furi_string_alloc();
+    bool valid = false;
+
+    switch(entry->type) {
+    case ThemeTypeSingle:
+        /* Single needs meta.txt + frame_0.bm in its folder */
+        furi_string_printf(path, "%s/%s/%s", ANIMATION_PACKS_PATH, entry->name, META_FILENAME);
+        if(!storage_file_exists(app->storage, furi_string_get_cstr(path))) break;
+
+        furi_string_printf(path, "%s/%s/frame_0.bm", ANIMATION_PACKS_PATH, entry->name);
+        if(!storage_file_exists(app->storage, furi_string_get_cstr(path))) break;
+
+        valid = true;
+        break;
+
+    case ThemeTypePack: {
+        /* Pack needs manifest.txt with valid header */
+        furi_string_printf(path, "%s/%s/%s", ANIMATION_PACKS_PATH, entry->name, MANIFEST_FILENAME);
+        uint32_t count = 0;
+        if(!theme_manager_parse_manifest(app, furi_string_get_cstr(path), &count)) break;
+        if(count == 0) break;
+
+        /* Check first animation has meta.txt + frame_0.bm */
+        char first_anim[MAX_NAME_LEN];
+        if(!theme_manager_get_first_anim_name(
+               app, furi_string_get_cstr(path), first_anim, sizeof(first_anim)))
+            break;
+
+        furi_string_printf(
+            path, "%s/%s/%s/%s", ANIMATION_PACKS_PATH, entry->name, first_anim, META_FILENAME);
+        if(!storage_file_exists(app->storage, furi_string_get_cstr(path))) break;
+
+        furi_string_printf(
+            path, "%s/%s/%s/frame_0.bm", ANIMATION_PACKS_PATH, entry->name, first_anim);
+        if(!storage_file_exists(app->storage, furi_string_get_cstr(path))) break;
+
+        valid = true;
+        break;
+    }
+
+    case ThemeTypeAnimsPack: {
+        /* AnimsPack needs Anims/manifest.txt with valid header */
+        furi_string_printf(
+            path,
+            "%s/%s/%s/%s",
+            ANIMATION_PACKS_PATH,
+            entry->name,
+            ANIMS_DIRNAME,
+            MANIFEST_FILENAME);
+        uint32_t count = 0;
+        if(!theme_manager_parse_manifest(app, furi_string_get_cstr(path), &count)) break;
+        if(count == 0) break;
+
+        /* Check first animation has meta.txt + frame_0.bm */
+        char first_anim[MAX_NAME_LEN];
+        if(!theme_manager_get_first_anim_name(
+               app, furi_string_get_cstr(path), first_anim, sizeof(first_anim)))
+            break;
+
+        furi_string_printf(
+            path,
+            "%s/%s/%s/%s/%s",
+            ANIMATION_PACKS_PATH,
+            entry->name,
+            ANIMS_DIRNAME,
+            first_anim,
+            META_FILENAME);
+        if(!storage_file_exists(app->storage, furi_string_get_cstr(path))) break;
+
+        furi_string_printf(
+            path,
+            "%s/%s/%s/%s/frame_0.bm",
+            ANIMATION_PACKS_PATH,
+            entry->name,
+            ANIMS_DIRNAME,
+            first_anim);
+        if(!storage_file_exists(app->storage, furi_string_get_cstr(path))) break;
+
+        valid = true;
+        break;
+    }
+    }
+
+    furi_string_free(path);
+    FURI_LOG_I(TAG, "Validate %s: %s", entry->name, valid ? "OK" : "INVALID");
+    return valid;
+}
+
+// -------------------------------------------------------------------
 // Preview animation timer callback — cycle frames
 // -------------------------------------------------------------------
 static void theme_manager_preview_tick(void* context) {
@@ -647,14 +743,14 @@ static bool theme_manager_reboot_timer_input(InputEvent* event, void* context) {
 
     if(event->key == InputKeyLeft || event->key == InputKeyBack) {
         /* Cancel timer, go to submenu */
-        if(app->reboot_timer) furi_timer_stop(app->reboot_timer);
+        furi_timer_stop(app->reboot_timer);
         theme_manager_scan_themes(app);
         theme_manager_populate_submenu(app);
         view_dispatcher_switch_to_view(app->view_dispatcher, ThemeManagerViewSubmenu);
         return true;
     } else if(event->key == InputKeyRight || event->key == InputKeyOk) {
         /* Immediate reboot */
-        if(app->reboot_timer) furi_timer_stop(app->reboot_timer);
+        furi_timer_stop(app->reboot_timer);
         furi_hal_power_reset();
         return true;
     }
@@ -804,6 +900,7 @@ static void theme_manager_scan_themes(ThemeManagerApp* app) {
             entry->anim_count = 0;
             entry->cached_size = 0;
             entry->is_favorite = false;
+            entry->is_valid = theme_manager_validate_theme(app, entry);
             app->theme_count++;
         } else {
             FURI_LOG_W(TAG, "Skipping %s (unknown format)", name);
@@ -1103,6 +1200,8 @@ static void theme_manager_info_draw(Canvas* canvas, void* _model) {
     snprintf(size_line, sizeof(size_line), "Size: %s", model->size_str);
     canvas_draw_str(canvas, text_x, PREVIEW_DRAW_Y + INFO_TEXT_Y_SIZE, size_line);
 
+    canvas_draw_str(canvas, text_x, PREVIEW_DRAW_Y + INFO_TEXT_Y_STATUS, model->status_str);
+
     /* Bottom buttons */
     canvas_set_font(canvas, FontSecondary);
     canvas_draw_str_aligned(canvas, 2, INFO_TEXT_Y_BTN, AlignLeft, AlignBottom, "<Back");
@@ -1135,6 +1234,12 @@ static bool theme_manager_info_input(InputEvent* event, void* context) {
         furi_timer_stop(app->preview_timer);
         uint32_t index = app->selected_index;
         if(index >= app->theme_count) return true;
+
+        /* Block Apply for invalid themes */
+        if(!app->themes[index].is_valid) {
+            theme_manager_show_error(app, "Cannot apply!\nTheme has missing files.");
+            return true;
+        }
 
         dialog_ex_set_header(
             app->confirm_dialog, app->themes[index].name, 64, 0, AlignCenter, AlignTop);
@@ -1273,6 +1378,11 @@ static void theme_manager_show_info(ThemeManagerApp* app, uint32_t index) {
             model->anim_count = anim_count;
             strncpy(model->size_str, size_str, sizeof(model->size_str) - 1);
             model->size_str[sizeof(model->size_str) - 1] = '\0';
+            snprintf(
+                model->status_str,
+                sizeof(model->status_str),
+                "%s",
+                entry->is_valid ? "Status: OK" : "Status: Invalid!");
         },
         false);
 
@@ -1409,15 +1519,16 @@ static void theme_manager_populate_submenu(ThemeManagerApp* app) {
                 if((pass == 0 && !is_fav) || (pass == 1 && is_fav)) continue;
 
                 const char* prefix;
+                bool valid = entry->is_valid;
                 switch(entry->type) {
                 case ThemeTypePack:
-                    prefix = is_fav ? "*[P] " : "[P] ";
+                    prefix = is_fav ? (valid ? "*[P] " : "*[!P] ") : (valid ? "[P] " : "[!P] ");
                     break;
                 case ThemeTypeAnimsPack:
-                    prefix = is_fav ? "*[A] " : "[A] ";
+                    prefix = is_fav ? (valid ? "*[A] " : "*[!A] ") : (valid ? "[A] " : "[!A] ");
                     break;
                 case ThemeTypeSingle:
-                    prefix = is_fav ? "*[S] " : "[S] ";
+                    prefix = is_fav ? (valid ? "*[S] " : "*[!S] ") : (valid ? "[S] " : "[!S] ");
                     break;
                 default:
                     prefix = is_fav ? "* " : "";
