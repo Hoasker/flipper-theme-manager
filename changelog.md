@@ -5,7 +5,7 @@ v1.6:
 
 v1.5:
 - Feature: theme file integrity validation — checks meta.txt, frame_0.bm, manifest.txt
-- Feature: invalid themes marked with [!P], [!A], [!S] prefix in menu
+- Feature: invalid themes marked with \[!P\], \[!A\], \[!S\] prefix in menu
 - Feature: Status line on Info screen (OK / Invalid!)
 - Feature: Apply blocked for invalid themes with error popup
 - Cleanup: removed remaining redundant timer NULL checks
