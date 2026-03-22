@@ -1,3 +1,8 @@
+v1.6:
+- Feature: Progress bar during theme application with file counter and current file name indicator
+- Improve: Replaced blocking SDK merge call with manual recursive copying to prevent UI freezing
+- Improve: Optimized copy buffer size for faster theme application from SD card
+
 v1.5:
 - Feature: theme file integrity validation — checks meta.txt, frame_0.bm, manifest.txt
 - Feature: invalid themes marked with [!P], [!A], [!S] prefix in menu
